@@ -14,10 +14,14 @@ import {
 } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import LoginScreen from "../components/LoginScreen";
-import TransactionModal, { TransactionInput, categoryConfig } from "../components/TransactionModal";
+import TransactionModal, {
+  TransactionInput,
+  parentCategoryConfig,
+  subCategoryConfig
+} from "../components/TransactionModal";
 import DonutChart from "../components/DonutChart";
 
-// Custom SVG Github Icon to avoid version mismatch
+// Custom SVG Github Icon
 const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
     viewBox="0 0 24 24"
@@ -44,11 +48,11 @@ interface Transaction {
   created_at?: string;
 }
 
-// Data awal (Seed Data) untuk simulasi LocalStorage jika database kosong
+// Data awal (Seed Data) disesuaikan dengan kategori baru
 const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id: "seed-1",
-    amount: 5000000,
+    amount: 7500000,
     type: "income",
     category: "Gaji",
     date: new Date().toISOString().split("T")[0],
@@ -56,27 +60,35 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
   },
   {
     id: "seed-2",
-    amount: 1500000,
+    amount: 450000,
     type: "expense",
-    category: "Cicilan",
+    category: "Groceries - Makan",
     date: new Date().toISOString().split("T")[0],
-    note: "Cicilan Motor Baru"
+    note: "Belanja Bulanan"
   },
   {
     id: "seed-3",
-    amount: 250000,
+    amount: 150000,
     type: "expense",
-    category: "Utilitas",
+    category: "Servis & Bensin",
     date: new Date().toISOString().split("T")[0],
-    note: "Bayar Listrik & Wifi"
+    note: "Isi Bensin & Cuci Motor"
   },
   {
     id: "seed-4",
-    amount: 120000,
+    amount: 250000,
     type: "expense",
-    category: "Makanan",
+    category: "Makan Weekend",
     date: new Date().toISOString().split("T")[0],
-    note: "Makan Malam Bersama Keluarga"
+    note: "Makan Malam Hari Sabtu"
+  },
+  {
+    id: "seed-5",
+    amount: 300000,
+    type: "expense",
+    category: "Tabungan Mama (BSI)",
+    date: new Date().toISOString().split("T")[0],
+    note: "Transfer Tabungan Mama"
   }
 ];
 
@@ -87,10 +99,9 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
-  // Jalankan hanya setelah component ter-mount di client
+  // Mount check
   useEffect(() => {
     setIsMounted(true);
-    // Cek status login di localStorage
     const savedUser = localStorage.getItem("keuangan_user");
     if (savedUser) {
       setIsAuthenticated(true);
@@ -98,15 +109,13 @@ export default function Home() {
     }
   }, []);
 
-  // Sinkronisasi data transaksi
+  // Sync data
   useEffect(() => {
     if (!isAuthenticated) return;
 
     if (isSupabaseConfigured) {
-      // Menggunakan Supabase
       fetchTransactions();
     } else {
-      // Fallback ke LocalStorage jika Supabase belum dikonfigurasi
       loadFromLocalStorage();
     }
   }, [isAuthenticated]);
@@ -151,21 +160,27 @@ export default function Home() {
   };
 
   const handleAddTransaction = async (input: TransactionInput) => {
+    const dbPayload = {
+      amount: input.amount,
+      type: input.type,
+      category: input.category,
+      date: input.date,
+      note: input.note
+    };
+
     if (isSupabaseConfigured) {
-      // Simpan ke Supabase
       try {
-        const { error } = await supabase.from("transactions").insert([input]);
+        const { error } = await supabase.from("transactions").insert([dbPayload]);
         if (error) throw error;
-        await fetchTransactions(); // Ambil data terbaru
+        await fetchTransactions();
       } catch (err) {
         console.error("Gagal menyimpan ke Supabase:", err);
-        alert("Gagal menyimpan transaksi ke database cloud Supabase");
+        alert("Gagal menyimpan transaksi ke database");
       }
     } else {
-      // Simpan ke LocalStorage
       const newTx: Transaction = {
         id: "tx-" + Date.now(),
-        ...input
+        ...dbPayload
       };
       const updated = [newTx, ...transactions];
       setTransactions(updated);
@@ -178,24 +193,22 @@ export default function Home() {
     if (!confirmDelete) return;
 
     if (isSupabaseConfigured) {
-      // Hapus dari Supabase
       try {
         const { error } = await supabase.from("transactions").delete().eq("id", id);
         if (error) throw error;
-        await fetchTransactions(); // Ambil data terbaru
+        await fetchTransactions();
       } catch (err) {
         console.error("Gagal menghapus dari Supabase:", err);
-        alert("Gagal menghapus transaksi dari database cloud Supabase");
+        alert("Gagal menghapus transaksi dari database");
       }
     } else {
-      // Hapus dari LocalStorage
       const updated = transactions.filter((tx) => tx.id !== id);
       setTransactions(updated);
       localStorage.setItem("transactions_data", JSON.stringify(updated));
     }
   };
 
-  // Kalkulasi Keuangan
+  // Kalkulasi total
   const totalIncome = transactions
     .filter((tx) => tx.type === "income")
     .reduce((acc, tx) => acc + tx.amount, 0);
@@ -206,25 +219,27 @@ export default function Home() {
 
   const balance = totalIncome - totalExpense;
 
-  // Siapkan data untuk DonutChart
-  const expenseCategories = ["Cicilan", "Utilitas", "Makanan", "Transportasi", "Belanja", "Hiburan", "Lain-lain"];
-  const chartData = expenseCategories.map((catName) => {
+  // Mengelompokkan grafik berdasarkan 4 kategori utama (LIVING, PLAYING, SAVING, WORKING)
+  const parentCategories = ["LIVING", "PLAYING", "SAVING", "WORKING"];
+  const chartData = parentCategories.map((parentName) => {
     const value = transactions
-      .filter((tx) => tx.type === "expense" && tx.category === catName)
+      .filter((tx) => {
+        if (tx.type !== "expense") return false;
+        const subConfig = subCategoryConfig[tx.category];
+        const txParent = subConfig ? subConfig.parent : "LIVING";
+        return txParent === parentName;
+      })
       .reduce((acc, tx) => acc + tx.amount, 0);
 
-    const config = categoryConfig[catName] || categoryConfig["Lain-lain"];
-    // Ambil kode warna hex yang sesuai
-    let colorHex = "#71717a"; // Default zinc
-    if (catName === "Cicilan") colorHex = "#f43f5e"; // rose-500
-    if (catName === "Utilitas") colorHex = "#f59e0b"; // amber-500
-    if (catName === "Makanan") colorHex = "#ea580c"; // orange-600
-    if (catName === "Transportasi") colorHex = "#3b82f6"; // blue-500
-    if (catName === "Belanja") colorHex = "#a855f7"; // purple-500
-    if (catName === "Hiburan") colorHex = "#6366f1"; // indigo-500
+    const config = parentCategoryConfig[parentName];
+    let colorHex = "#71717a";
+    if (parentName === "LIVING") colorHex = "#10b981"; // emerald-500
+    if (parentName === "PLAYING") colorHex = "#6366f1"; // indigo-500
+    if (parentName === "SAVING") colorHex = "#f59e0b"; // amber-500
+    if (parentName === "WORKING") colorHex = "#f43f5e"; // rose-500
 
     return {
-      name: catName,
+      name: config.label,
       value,
       color: colorHex
     };
@@ -251,7 +266,6 @@ export default function Home() {
     }
   };
 
-  // Mencegah error hidrasi server-side Next.js
   if (!isMounted) {
     return null;
   }
@@ -262,7 +276,7 @@ export default function Home() {
 
   return (
     <div className="flex-1 w-full bg-zinc-950 flex justify-center">
-      {/* Mobile Container Frame */}
+      {/* Mobile Frame Container */}
       <div className="w-full max-w-md bg-zinc-950 min-h-screen border-x border-zinc-900 flex flex-col relative shadow-2xl pb-24">
         
         {/* Header */}
@@ -300,7 +314,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* Saldo Utama Card */}
+          {/* Saldo Card */}
           <div className="relative overflow-hidden bg-gradient-to-br from-emerald-500/20 via-zinc-900 to-zinc-900 border border-emerald-500/20 rounded-[2rem] p-6 shadow-xl shadow-emerald-500/5">
             <div className="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl"></div>
             <p className="text-xs font-semibold text-emerald-400 tracking-wider uppercase">
@@ -310,7 +324,7 @@ export default function Home() {
               {formatRupiah(balance)}
             </h1>
 
-            {/* Sub Summary Grid */}
+            {/* Income & Expense summary */}
             <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-zinc-800/80">
               <div className="flex items-start gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 mt-0.5">
@@ -342,7 +356,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Grafik Donut Pengeluaran */}
+          {/* Donut Chart (LIVING, PLAYING, SAVING, WORKING) */}
           <DonutChart data={chartData} title="Pembagian Kategori Pengeluaran" />
 
           {/* Daftar Riwayat Transaksi */}
@@ -364,8 +378,14 @@ export default function Home() {
             ) : (
               <div className="space-y-2.5">
                 {transactions.map((tx) => {
-                  const config = categoryConfig[tx.category] || categoryConfig["Lain-lain"];
-                  const IconComp = config.icon;
+                  // Dapatkan konfigurasi subkategori secara dinamis
+                  const subConfig = subCategoryConfig[tx.category] || {
+                    label: tx.category,
+                    parent: "LIVING",
+                    icon: AlertTriangle
+                  };
+                  const parentConfig = parentCategoryConfig[subConfig.parent] || parentCategoryConfig["LIVING"];
+                  const IconComp = subConfig.icon;
                   const isExpense = tx.type === "expense";
 
                   return (
@@ -374,20 +394,25 @@ export default function Home() {
                       className="group flex items-center justify-between p-4 bg-zinc-900 border border-zinc-800/80 rounded-2.5xl hover:border-zinc-800 transition-all duration-200"
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
-                        {/* Icon Kategori */}
-                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${config.bg} border border-current/10 flex-shrink-0`}>
-                          <IconComp className={`w-5 h-5 ${config.color} stroke-[1.8]`} />
+                        {/* Icon Subkategori dengan warna tema Kategori Utama */}
+                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${parentConfig.bg} border border-current/10 flex-shrink-0`}>
+                          <IconComp className={`w-5 h-5 ${parentConfig.color} stroke-[1.8]`} />
                         </div>
-                        {/* Judul & Tanggal */}
+                        {/* Detail Transaksi */}
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-white truncate">
-                            {tx.note || config.label}
+                            {tx.note || subConfig.label}
                           </p>
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <Calendar className="w-3 h-3 text-zinc-600" />
-                            <span className="text-[10px] text-zinc-500 font-medium">
-                              {formatDate(tx.date)}
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${parentConfig.bg} ${parentConfig.color}`}>
+                              {parentConfig.label}
                             </span>
+                            <div className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-zinc-600" />
+                              <span className="text-[10px] text-zinc-500 font-medium">
+                                {formatDate(tx.date)}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>

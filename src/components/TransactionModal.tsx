@@ -3,13 +3,30 @@
 import React, { useState, useEffect } from "react";
 import {
   X,
-  CreditCard,
+  Apple,
+  ShoppingCart,
+  Sparkles,
+  Activity,
+  Coffee,
+  Shirt,
+  MapPin,
+  Store,
+  Home,
+  Wrench,
+  Fuel,
+  Cookie,
+  CupSoda,
+  Users,
   Zap,
-  Utensils,
-  Car,
-  ShoppingBag,
-  Film,
+  BookOpen,
+  Dumbbell,
+  Gamepad2,
+  Heart,
   Coins,
+  PiggyBank,
+  Monitor,
+  Baby,
+  Briefcase,
   TrendingUp,
   Award,
   HelpCircle,
@@ -21,6 +38,7 @@ export interface TransactionInput {
   amount: number;
   type: "income" | "expense";
   category: string;
+  parent_category: string;
   date: string;
   note: string;
 }
@@ -31,34 +49,69 @@ interface TransactionModalProps {
   onSubmit: (transaction: TransactionInput) => Promise<void>;
 }
 
-// Map kategori ke Ikon dan Warna styling
-export const categoryConfig: Record<string, { label: string; icon: any; color: string; bg: string }> = {
-  // Pengeluaran
-  Cicilan: { label: "Cicilan", icon: CreditCard, color: "text-rose-400", bg: "bg-rose-500/10 border-rose-500/20" },
-  Utilitas: { label: "Utilitas", icon: Zap, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" },
-  Makanan: { label: "Makanan", icon: Utensils, color: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/20" },
-  Transportasi: { label: "Transportasi", icon: Car, color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" },
-  Belanja: { label: "Belanja", icon: ShoppingBag, color: "text-purple-400", bg: "bg-purple-500/10 border-purple-500/20" },
-  Hiburan: { label: "Hiburan", icon: Film, color: "text-indigo-400", bg: "bg-indigo-500/10 border-indigo-500/20" },
-  
-  // Pemasukan
-  Gaji: { label: "Gaji", icon: Coins, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
-  Investasi: { label: "Investasi", icon: TrendingUp, color: "text-teal-400", bg: "bg-teal-500/10 border-teal-500/20" },
-  Sampingan: { label: "Sampingan", icon: Award, color: "text-cyan-400", bg: "bg-cyan-500/10 border-cyan-500/20" },
-  
-  // Bersama / Umum
-  "Lain-lain": { label: "Lain-lain", icon: HelpCircle, color: "text-zinc-400", bg: "bg-zinc-500/10 border-zinc-500/20" }
+// Konfigurasi Kategori Utama (Parent Categories)
+export const parentCategoryConfig: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+  LIVING: { label: "LIVING", color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20", icon: Home },
+  PLAYING: { label: "PLAYING", color: "text-indigo-400", bg: "bg-indigo-500/10 border-indigo-500/20", icon: Gamepad2 },
+  SAVING: { label: "SAVING", color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20", icon: PiggyBank },
+  WORKING: { label: "WORKING", color: "text-rose-400", bg: "bg-rose-500/10 border-rose-500/20", icon: Briefcase },
+  INCOME: { label: "PEMASUKAN", color: "text-teal-400", bg: "bg-teal-500/10 border-teal-500/20", icon: Coins }
+};
+
+// Konfigurasi Subkategori Detail
+export const subCategoryConfig: Record<string, { label: string; parent: string; icon: any }> = {
+  // === LIVING ===
+  "Buah": { label: "Buah", parent: "LIVING", icon: Apple },
+  "Groceries - Makan": { label: "Groceries", parent: "LIVING", icon: ShoppingCart },
+  "Kebersihan Rumah": { label: "Kebersihan", parent: "LIVING", icon: Sparkles },
+  "Kesehatan": { label: "Kesehatan", parent: "LIVING", icon: Activity },
+  "Makan Lainnya": { label: "Makan Lain", parent: "LIVING", icon: Coffee },
+  "Pakaian": { label: "Pakaian", parent: "LIVING", icon: Shirt },
+  "Parkir": { label: "Parkir", parent: "LIVING", icon: MapPin },
+  "Pasar": { label: "Pasar", parent: "LIVING", icon: Store },
+  "Perabotan Rumah": { label: "Perabotan", parent: "LIVING", icon: Home },
+  "Repair": { label: "Repair", parent: "LIVING", icon: Wrench },
+  "Servis & Bensin": { label: "Servis & Bensin", parent: "LIVING", icon: Fuel },
+  "Skin & Body Care": { label: "Skin Care", parent: "LIVING", icon: Sparkles },
+  "Snack UPF": { label: "Snack UPF", parent: "LIVING", icon: Cookie },
+  "Susu": { label: "Susu", parent: "LIVING", icon: CupSoda },
+  "Upah/Gaji ART": { label: "Gaji ART", parent: "LIVING", icon: Users },
+  "Utilitas": { label: "Utilitas", parent: "LIVING", icon: Zap },
+
+  // === PLAYING ===
+  "Edukasi": { label: "Edukasi", parent: "PLAYING", icon: BookOpen },
+  "Makan Weekend": { label: "Makan Weekend", parent: "PLAYING", icon: Coffee },
+  "Play & Gym - Mama Papa": { label: "Gym Mama Papa", parent: "PLAYING", icon: Dumbbell },
+  "Play & Learn - Zayyan": { label: "Play Zayyan", parent: "PLAYING", icon: Gamepad2 },
+  "Sosial": { label: "Sosial", parent: "PLAYING", icon: Heart },
+
+  // === SAVING ===
+  "Sinking Fund": { label: "Sinking Fund", parent: "SAVING", icon: Coins },
+  "Tabungan Mama (BSI)": { label: "Tabungan Mama", parent: "SAVING", icon: PiggyBank },
+  "Tabungan Papa (BCA)": { label: "Tabungan Papa", parent: "SAVING", icon: PiggyBank },
+
+  // === WORKING ===
+  "Alat Kerja": { label: "Alat Kerja", parent: "WORKING", icon: Monitor },
+  "Babysitting": { label: "Babysitting", parent: "WORKING", icon: Baby },
+  "Work from Cafe": { label: "Work from Cafe", parent: "WORKING", icon: Coffee },
+
+  // === PEMASUKAN ===
+  "Gaji": { label: "Gaji Utama", parent: "INCOME", icon: Coins },
+  "Investasi": { label: "Investasi", parent: "INCOME", icon: TrendingUp },
+  "Sampingan": { label: "Sampingan", parent: "INCOME", icon: Award },
+  "Lain-lain": { label: "Lain-lain", parent: "INCOME", icon: HelpCircle }
 };
 
 export default function TransactionModal({ isOpen, onClose, onSubmit }: TransactionModalProps) {
   const [type, setType] = useState<"income" | "expense">("expense");
+  const [parentCat, setParentCat] = useState("LIVING");
+  const [subCat, setSubCat] = useState("Groceries - Makan");
   const [amountStr, setAmountStr] = useState("");
-  const [category, setCategory] = useState("Makanan");
   const [date, setDate] = useState("");
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Set tanggal default ke hari ini saat modal dibuka
+  // Set default state saat modal dibuka
   useEffect(() => {
     if (isOpen) {
       const today = new Date();
@@ -67,28 +120,41 @@ export default function TransactionModal({ isOpen, onClose, onSubmit }: Transact
       const dd = String(today.getDate()).padStart(2, "0");
       setDate(`${yyyy}-${mm}-${dd}`);
       
-      // Reset form
       setAmountStr("");
       setNote("");
       setType("expense");
-      setCategory("Makanan");
+      setParentCat("LIVING");
+      setSubCat("Groceries - Makan");
     }
   }, [isOpen]);
 
-  // Sesuaikan kategori default jika berganti type
+  // Sesuaikan kategori default saat tipe transaksi berubah
   useEffect(() => {
     if (type === "expense") {
-      setCategory("Makanan");
+      setParentCat("LIVING");
+      setSubCat("Groceries - Makan");
     } else {
-      setCategory("Gaji");
+      setParentCat("INCOME");
+      setSubCat("Gaji");
     }
   }, [type]);
 
+  // Sesuaikan subkategori default saat kategori utama berubah
+  useEffect(() => {
+    if (type === "expense") {
+      if (parentCat === "LIVING") setSubCat("Groceries - Makan");
+      if (parentCat === "PLAYING") setSubCat("Edukasi");
+      if (parentCat === "SAVING") setSubCat("Sinking Fund");
+      if (parentCat === "WORKING") setSubCat("Alat Kerja");
+    }
+  }, [parentCat, type]);
+
   if (!isOpen) return null;
 
-  const expenseCategories = ["Cicilan", "Utilitas", "Makanan", "Transportasi", "Belanja", "Hiburan", "Lain-lain"];
-  const incomeCategories = ["Gaji", "Investasi", "Sampingan", "Lain-lain"];
-  const activeCategories = type === "expense" ? expenseCategories : incomeCategories;
+  // Filter subkategori berdasarkan kategori utama aktif
+  const filteredSubCategories = Object.keys(subCategoryConfig).filter(
+    (key) => subCategoryConfig[key].parent === parentCat
+  );
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,7 +169,8 @@ export default function TransactionModal({ isOpen, onClose, onSubmit }: Transact
       await onSubmit({
         amount: numAmount,
         type,
-        category,
+        category: subCat,
+        parent_category: parentCat,
         date,
         note: note.trim()
       });
@@ -116,7 +183,6 @@ export default function TransactionModal({ isOpen, onClose, onSubmit }: Transact
     }
   };
 
-  // Format ribuan otomatis sewaktu mengetik
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawVal = e.target.value.replace(/[^0-9]/g, "");
     if (rawVal === "") {
@@ -129,17 +195,16 @@ export default function TransactionModal({ isOpen, onClose, onSubmit }: Transact
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
-      {/* Background click to close */}
       <div className="absolute inset-0" onClick={onClose}></div>
 
-      {/* Modal / Bottom Sheet */}
+      {/* Modal Bottom Sheet */}
       <div className="relative w-full max-w-md bg-zinc-900 border-t border-zinc-800 rounded-t-[2.5rem] p-6 shadow-2xl z-10 max-h-[92vh] overflow-y-auto flex flex-col animate-slide-up">
-        {/* Drag Handle Bar */}
+        {/* Drag Handle */}
         <div className="w-12 h-1 bg-zinc-800 rounded-full mx-auto mb-5"></div>
 
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-white">Tambah Transaksi</h2>
+        <div className="flex justify-between items-center mb-5">
+          <h2 className="text-lg font-bold text-white">Tambah Transaksi</h2>
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
@@ -148,8 +213,8 @@ export default function TransactionModal({ isOpen, onClose, onSubmit }: Transact
           </button>
         </div>
 
-        {/* Tab Toggle Type */}
-        <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-950 rounded-2xl mb-6">
+        {/* Toggle Tipe Transaksi */}
+        <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-950/80 rounded-2xl mb-5">
           <button
             type="button"
             onClick={() => setType("expense")}
@@ -175,8 +240,8 @@ export default function TransactionModal({ isOpen, onClose, onSubmit }: Transact
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleFormSubmit} className="space-y-5 flex-1">
-          {/* Amount Input */}
+        <form onSubmit={handleFormSubmit} className="space-y-4.5 flex-1">
+          {/* Nominal */}
           <div className="space-y-1">
             <label className="text-xs font-semibold text-zinc-500 tracking-wider uppercase ml-1">
               Nominal (Rp)
@@ -188,36 +253,71 @@ export default function TransactionModal({ isOpen, onClose, onSubmit }: Transact
               onChange={handleAmountChange}
               placeholder="0"
               required
-              className={`w-full bg-transparent text-4xl font-bold tracking-tight outline-none border-b border-zinc-800 py-3 ${
+              className={`w-full bg-transparent text-4xl font-bold tracking-tight outline-none border-b border-zinc-800 py-2.5 ${
                 type === "expense" ? "text-rose-400 focus:border-rose-500" : "text-emerald-400 focus:border-emerald-500"
               }`}
             />
           </div>
 
-          {/* Kategori Grid */}
+          {/* Kategori Utama (Parent Selector) - Khusus Pengeluaran */}
+          {type === "expense" && (
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-zinc-500 tracking-wider uppercase ml-1">
+                Kategori Utama
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {["LIVING", "PLAYING", "SAVING", "WORKING"].map((key) => {
+                  const config = parentCategoryConfig[key];
+                  const IconComp = config.icon;
+                  const isSelected = parentCat === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setParentCat(key)}
+                      className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border transition-all text-center ${
+                        isSelected
+                          ? `${config.bg} border-current ${config.color} font-bold scale-102`
+                          : "bg-zinc-950/40 border-zinc-800/80 text-zinc-500 hover:text-zinc-300 hover:border-zinc-800"
+                      }`}
+                    >
+                      <IconComp className="w-4.5 h-4.5" />
+                      <span className="text-[10px] tracking-wide">{config.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Subkategori Grid */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-zinc-500 tracking-wider uppercase ml-1">
-              Pilih Kategori
+              Pilih Subkategori
             </label>
-            <div className="grid grid-cols-3 gap-2.5">
-              {activeCategories.map((catKey) => {
-                const config = categoryConfig[catKey] || categoryConfig["Lain-lain"];
+            <div className="grid grid-cols-3 gap-2 max-h-[190px] overflow-y-auto pr-1">
+              {filteredSubCategories.map((key) => {
+                const config = subCategoryConfig[key] || subCategoryConfig["Lain-lain"];
                 const IconComp = config.icon;
-                const isSelected = category === catKey;
+                const isSelected = subCat === key;
+                const parentColor = parentCategoryConfig[parentCat]?.color || "text-zinc-400";
+                const parentBg = parentCategoryConfig[parentCat]?.bg || "bg-zinc-500/10";
 
                 return (
                   <button
-                    key={catKey}
+                    key={key}
                     type="button"
-                    onClick={() => setCategory(catKey)}
-                    className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border transition-all duration-150 ${
+                    onClick={() => setSubCat(key)}
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all duration-150 ${
                       isSelected
-                        ? `${config.bg} border-current ${config.color} scale-102 font-semibold shadow-md`
-                        : "bg-zinc-950/40 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-800"
+                        ? `${parentBg} border-current ${parentColor} font-semibold scale-102 shadow-sm`
+                        : "bg-zinc-950/40 border-zinc-800/60 text-zinc-400 hover:text-zinc-200 hover:border-zinc-800"
                     }`}
                   >
-                    <IconComp className={`w-6 h-6 stroke-[1.8]`} />
-                    <span className="text-xs tracking-wide">{config.label}</span>
+                    <IconComp className="w-5 h-5 stroke-[1.8]" />
+                    <span className="text-[10px] tracking-wide text-center truncate w-full">
+                      {config.label}
+                    </span>
                   </button>
                 );
               })}
@@ -252,17 +352,17 @@ export default function TransactionModal({ isOpen, onClose, onSubmit }: Transact
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="cth: Bayar kos, beli bensin, dll."
+                placeholder="cth: Makan siang, beli kopi, dll."
                 className="w-full bg-zinc-950/80 border border-zinc-800 focus:border-zinc-700 rounded-2xl py-3 pl-12 pr-4 text-white text-sm placeholder-zinc-700 outline-none"
               />
             </div>
           </div>
 
-          {/* Submit Button */}
+          {/* Submit */}
           <button
             type="submit"
             disabled={isSubmitting}
-            className={`w-full text-zinc-950 font-bold py-4 rounded-2xl hover:opacity-95 active:scale-[0.98] transition-all text-sm mt-8 shadow-lg ${
+            className={`w-full text-zinc-950 font-bold py-3.5 rounded-2xl hover:opacity-95 active:scale-[0.98] transition-all text-sm mt-6 shadow-lg ${
               type === "expense"
                 ? "bg-gradient-to-r from-rose-500 to-orange-500 shadow-rose-500/10"
                 : "bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-500/10"
