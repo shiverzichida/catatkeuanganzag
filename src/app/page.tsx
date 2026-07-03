@@ -12,6 +12,10 @@ import {
   Calendar,
   AlertTriangle
 } from "lucide-react";
+import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import LoginScreen from "../components/LoginScreen";
+import TransactionModal, { TransactionInput, categoryConfig } from "../components/TransactionModal";
+import DonutChart from "../components/DonutChart";
 
 // Custom SVG Github Icon to avoid version mismatch
 const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -29,20 +33,6 @@ const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
   </svg>
 );
-import { db, isFirebaseConfigured } from "../lib/firebase";
-import {
-  collection,
-  addDoc,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  orderBy,
-  Timestamp
-} from "firebase/firestore";
-import LoginScreen from "../components/LoginScreen";
-import TransactionModal, { TransactionInput, categoryConfig } from "../components/TransactionModal";
-import DonutChart from "../components/DonutChart";
 
 interface Transaction {
   id: string;
@@ -51,7 +41,7 @@ interface Transaction {
   category: string;
   date: string;
   note: string;
-  createdAt?: any;
+  created_at?: string;
 }
 
 // Data awal (Seed Data) untuk simulasi LocalStorage jika database kosong
@@ -112,38 +102,31 @@ export default function Home() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    if (isFirebaseConfigured && db) {
-      // Menggunakan Firebase Firestore
-      const q = query(collection(db, "transactions"), orderBy("date", "desc"));
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const loadedTransactions = snapshot.docs.map((docSnap) => {
-            const data = docSnap.data();
-            return {
-              id: docSnap.id,
-              amount: data.amount,
-              type: data.type,
-              category: data.category,
-              date: data.date,
-              note: data.note,
-              createdAt: data.createdAt
-            } as Transaction;
-          });
-          setTransactions(loadedTransactions);
-        },
-        (error) => {
-          console.error("Firestore error, falling back to LocalStorage:", error);
-          loadFromLocalStorage();
-        }
-      );
-
-      return () => unsubscribe();
+    if (isSupabaseConfigured) {
+      // Menggunakan Supabase
+      fetchTransactions();
     } else {
-      // Fallback ke LocalStorage jika Firebase belum dikonfigurasi
+      // Fallback ke LocalStorage jika Supabase belum dikonfigurasi
       loadFromLocalStorage();
     }
   }, [isAuthenticated]);
+
+  const fetchTransactions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("*")
+        .order("date", { ascending: false });
+
+      if (error) throw error;
+      if (data) {
+        setTransactions(data as Transaction[]);
+      }
+    } catch (err) {
+      console.error("Supabase fetch error, falling back to LocalStorage:", err);
+      loadFromLocalStorage();
+    }
+  };
 
   const loadFromLocalStorage = () => {
     const saved = localStorage.getItem("transactions_data");
@@ -168,12 +151,16 @@ export default function Home() {
   };
 
   const handleAddTransaction = async (input: TransactionInput) => {
-    if (isFirebaseConfigured && db) {
-      // Simpan ke Firestore
-      await addDoc(collection(db, "transactions"), {
-        ...input,
-        createdAt: Timestamp.now()
-      });
+    if (isSupabaseConfigured) {
+      // Simpan ke Supabase
+      try {
+        const { error } = await supabase.from("transactions").insert([input]);
+        if (error) throw error;
+        await fetchTransactions(); // Ambil data terbaru
+      } catch (err) {
+        console.error("Gagal menyimpan ke Supabase:", err);
+        alert("Gagal menyimpan transaksi ke database cloud Supabase");
+      }
     } else {
       // Simpan ke LocalStorage
       const newTx: Transaction = {
@@ -190,9 +177,16 @@ export default function Home() {
     const confirmDelete = window.confirm("Apakah Anda yakin ingin menghapus transaksi ini?");
     if (!confirmDelete) return;
 
-    if (isFirebaseConfigured && db) {
-      // Hapus dari Firestore
-      await deleteDoc(doc(db, "transactions", id));
+    if (isSupabaseConfigured) {
+      // Hapus dari Supabase
+      try {
+        const { error } = await supabase.from("transactions").delete().eq("id", id);
+        if (error) throw error;
+        await fetchTransactions(); // Ambil data terbaru
+      } catch (err) {
+        console.error("Gagal menghapus dari Supabase:", err);
+        alert("Gagal menghapus transaksi dari database cloud Supabase");
+      }
     } else {
       // Hapus dari LocalStorage
       const updated = transactions.filter((tx) => tx.id !== id);
@@ -220,7 +214,7 @@ export default function Home() {
       .reduce((acc, tx) => acc + tx.amount, 0);
 
     const config = categoryConfig[catName] || categoryConfig["Lain-lain"];
-    // Ambil kode warna hex dari tailwind yang sesuai dengan visualisasi
+    // Ambil kode warna hex yang sesuai
     let colorHex = "#71717a"; // Default zinc
     if (catName === "Cicilan") colorHex = "#f43f5e"; // rose-500
     if (catName === "Utilitas") colorHex = "#f59e0b"; // amber-500
@@ -246,7 +240,6 @@ export default function Home() {
 
   const formatDate = (dateStr: string) => {
     try {
-      const options: React.HTMLAttributes<HTMLSpanElement>["className"] = "text-xs text-zinc-500";
       const date = new Date(dateStr);
       return date.toLocaleDateString("id-ID", {
         day: "numeric",
@@ -294,15 +287,15 @@ export default function Home() {
         </header>
 
         <main className="p-5 space-y-6 flex-1">
-          {/* Warning Banner if Firebase is NOT configured */}
-          {!isFirebaseConfigured && (
+          {/* Warning Banner if Supabase is NOT configured */}
+          {!isSupabaseConfigured && (
             <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-4 rounded-2xl text-xs space-y-2 leading-relaxed">
               <div className="flex items-center gap-2 font-bold">
                 <AlertTriangle className="w-4 h-4 text-amber-400" />
                 <span>Demo Mode (Penyimpanan Lokal)</span>
               </div>
               <p>
-                Konfigurasi Firebase belum terdeteksi. Data saat ini hanya disimpan di browser Anda (LocalStorage). Lengkapi konfigurasi Firebase Anda di file <code className="font-mono text-[10px] bg-zinc-900 px-1 py-0.5 rounded">.env.local</code> untuk menggunakan cloud database.
+                Konfigurasi Supabase belum terdeteksi. Data saat ini hanya disimpan di browser Anda (LocalStorage). Lengkapi konfigurasi Supabase Anda di file <code className="font-mono text-[10px] bg-zinc-900 px-1 py-0.5 rounded">.env.local</code> untuk menggunakan cloud database.
               </p>
             </div>
           )}
