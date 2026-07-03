@@ -10,7 +10,11 @@ import {
   Trash2,
   Database,
   Calendar,
-  AlertTriangle
+  AlertTriangle,
+  Sun,
+  Moon,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import LoginScreen from "../components/LoginScreen";
@@ -92,6 +96,8 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
   }
 ];
 
+const ITEMS_PER_PAGE = 5;
+
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState("");
@@ -99,14 +105,34 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
-  // Mount check
+  // === FITUR BARU STATE ===
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  // Mount check & Load theme/login
   useEffect(() => {
     setIsMounted(true);
+    
+    // Load User
     const savedUser = localStorage.getItem("keuangan_user");
     if (savedUser) {
       setIsAuthenticated(true);
       setUser(savedUser);
     }
+
+    // Load Theme
+    const savedTheme = localStorage.getItem("theme_mode");
+    if (savedTheme) {
+      setIsDarkMode(savedTheme === "dark");
+    }
+
+    // Set Default Month ke Bulan Ini (Format YYYY-MM)
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    setSelectedMonth(`${yyyy}-${mm}`);
   }, []);
 
   // Sync data
@@ -145,6 +171,47 @@ export default function Home() {
       localStorage.setItem("transactions_data", JSON.stringify(INITIAL_TRANSACTIONS));
       setTransactions(INITIAL_TRANSACTIONS);
     }
+  };
+
+  // Toggle Theme Mode
+  const toggleTheme = () => {
+    const nextMode = !isDarkMode;
+    setIsDarkMode(nextMode);
+    localStorage.setItem("theme_mode", nextMode ? "dark" : "light");
+  };
+
+  // Navigasi Bulan Kalender
+  const handlePrevMonth = () => {
+    const [year, month] = selectedMonth.split("-").map(Number);
+    let newMonth = month - 1;
+    let newYear = year;
+    if (newMonth === 0) {
+      newMonth = 12;
+      newYear = year - 1;
+    }
+    setSelectedMonth(`${newYear}-${String(newMonth).padStart(2, "0")}`);
+    setCurrentPage(1); // Reset halaman ke 1
+    setSelectedCategory(null);
+  };
+
+  const handleNextMonth = () => {
+    const [year, month] = selectedMonth.split("-").map(Number);
+    let newMonth = month + 1;
+    let newYear = year;
+    if (newMonth === 13) {
+      newMonth = 1;
+      newYear = year + 1;
+    }
+    setSelectedMonth(`${newYear}-${String(newMonth).padStart(2, "0")}`);
+    setCurrentPage(1); // Reset halaman ke 1
+    setSelectedCategory(null);
+  };
+
+  const getMonthLabel = (monthStr: string) => {
+    if (!monthStr) return "";
+    const [year, month] = monthStr.split("-");
+    const date = new Date(Number(year), Number(month) - 1, 1);
+    return date.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
   };
 
   const handleLogin = (loggedInUser: string) => {
@@ -208,21 +275,26 @@ export default function Home() {
     }
   };
 
-  // Kalkulasi total
-  const totalIncome = transactions
+  // === FITUR FILTER BULAN ===
+  const filteredTransactions = transactions.filter((tx) => {
+    return tx.date.startsWith(selectedMonth);
+  });
+
+  // Kalkulasi total berdasarkan bulan terpilih
+  const totalIncome = filteredTransactions
     .filter((tx) => tx.type === "income")
     .reduce((acc, tx) => acc + tx.amount, 0);
 
-  const totalExpense = transactions
+  const totalExpense = filteredTransactions
     .filter((tx) => tx.type === "expense")
     .reduce((acc, tx) => acc + tx.amount, 0);
 
   const balance = totalIncome - totalExpense;
 
-  // Mengelompokkan grafik berdasarkan 4 kategori utama (LIVING, PLAYING, SAVING, WORKING)
+  // Mengelompokkan grafik pengeluaran bulanan
   const parentCategories = ["LIVING", "PLAYING", "SAVING", "WORKING"];
   const chartData = parentCategories.map((parentName) => {
-    const value = transactions
+    const value = filteredTransactions
       .filter((tx) => {
         if (tx.type !== "expense") return false;
         const subConfig = subCategoryConfig[tx.category];
@@ -244,6 +316,23 @@ export default function Home() {
       color: colorHex
     };
   });
+
+  // Filtered transactions for list display based on selected category (parent category)
+  const displayTransactions = selectedCategory
+    ? filteredTransactions.filter((tx) => {
+        if (tx.type !== "expense") return false;
+        const subConfig = subCategoryConfig[tx.category];
+        const txParent = subConfig ? subConfig.parent : "LIVING";
+        return txParent === selectedCategory;
+      })
+    : filteredTransactions;
+
+  // === FITUR PAGINASI ===
+  const totalPages = Math.ceil(displayTransactions.length / ITEMS_PER_PAGE) || 1;
+  const paginatedTransactions = displayTransactions.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   const formatRupiah = (val: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -275,66 +364,128 @@ export default function Home() {
   }
 
   return (
-    <div className="flex-1 w-full bg-zinc-950 flex justify-center">
+    <div className={`flex-1 w-full flex justify-center transition-colors duration-200 ${
+      isDarkMode ? "bg-black" : "bg-zinc-100"
+    }`}>
       {/* Mobile Frame Container */}
-      <div className="w-full max-w-md bg-zinc-950 min-h-screen border-x border-zinc-900 flex flex-col relative shadow-2xl pb-24">
+      <div className={`w-full max-w-md min-h-screen border-x flex flex-col relative shadow-2xl pb-24 transition-colors duration-200 ${
+        isDarkMode ? "bg-zinc-950 text-white border-zinc-900" : "bg-zinc-50 text-zinc-900 border-zinc-200"
+      }`}>
         
         {/* Header */}
-        <header className="sticky top-0 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-900/50 px-6 py-4 flex items-center justify-between z-20">
+        <header className={`sticky top-0 backdrop-blur-md border-b px-6 py-4 flex items-center justify-between z-20 transition-colors duration-200 ${
+          isDarkMode ? "bg-zinc-950/80 border-zinc-900/50" : "bg-zinc-50/80 border-zinc-200/50"
+        }`}>
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 bg-gradient-to-tr from-emerald-500 to-teal-400 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/10">
               <Wallet className="w-5 h-5 text-zinc-950 stroke-[2.2]" />
             </div>
             <div>
-              <p className="text-xs text-zinc-500">Halo,</p>
-              <h2 className="text-sm font-bold text-white">{user} 👋</h2>
+              <p className={`text-[10px] ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>Halo,</p>
+              <h2 className="text-sm font-bold">{user} 👋</h2>
             </div>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="w-9 h-9 rounded-xl bg-zinc-900/60 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-red-400 active:scale-95 transition-all"
-            title="Keluar Akun"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Theme Toggle Button */}
+            <button
+              onClick={toggleTheme}
+              className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all ${
+                isDarkMode 
+                  ? "bg-zinc-900/60 border-zinc-800 text-amber-400 hover:text-amber-300" 
+                  : "bg-white border-zinc-200 text-indigo-500 hover:text-indigo-600 shadow-sm"
+              }`}
+              title={isDarkMode ? "Aktifkan Mode Terang" : "Aktifkan Mode Gelap"}
+            >
+              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all ${
+                isDarkMode 
+                  ? "bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-red-400" 
+                  : "bg-white border-zinc-200 text-zinc-500 hover:text-red-500 shadow-sm"
+              }`}
+              title="Keluar Akun"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </header>
 
         <main className="p-5 space-y-6 flex-1">
           {/* Warning Banner if Supabase is NOT configured */}
           {!isSupabaseConfigured && (
-            <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-4 rounded-2xl text-xs space-y-2 leading-relaxed">
+            <div className={`border p-4 rounded-2xl text-xs space-y-2 leading-relaxed ${
+              isDarkMode ? "bg-amber-500/10 border-amber-500/20 text-amber-400" : "bg-amber-500/5 border-amber-500/30 text-amber-600"
+            }`}>
               <div className="flex items-center gap-2 font-bold">
-                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                <AlertTriangle className="w-4 h-4" />
                 <span>Demo Mode (Penyimpanan Lokal)</span>
               </div>
               <p>
-                Konfigurasi Supabase belum terdeteksi. Data saat ini hanya disimpan di browser Anda (LocalStorage). Lengkapi konfigurasi Supabase Anda di file <code className="font-mono text-[10px] bg-zinc-900 px-1 py-0.5 rounded">.env.local</code> untuk menggunakan cloud database.
+                Konfigurasi Supabase belum terdeteksi. Data disimpan di browser Anda (LocalStorage). Lengkapi konfigurasi Supabase Anda di file <code className="font-mono text-[10px] bg-zinc-900/50 px-1 py-0.5 rounded">.env.local</code>.
               </p>
             </div>
           )}
 
+          {/* Kalender Filter Navigator */}
+          <div className={`flex items-center justify-between p-3 rounded-2xl border transition-all duration-200 ${
+            isDarkMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-zinc-200 text-zinc-900 shadow-sm"
+          }`}>
+            <button
+              onClick={handlePrevMonth}
+              className={`p-2 rounded-xl transition-all ${
+                isDarkMode ? "bg-zinc-950 hover:bg-zinc-800 text-zinc-400" : "bg-zinc-100 hover:bg-zinc-200 text-zinc-600"
+              }`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-2">
+              <Calendar className={`w-4 h-4 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
+              <span className="text-sm font-bold">{getMonthLabel(selectedMonth)}</span>
+            </div>
+            <button
+              onClick={handleNextMonth}
+              className={`p-2 rounded-xl transition-all ${
+                isDarkMode ? "bg-zinc-950 hover:bg-zinc-800 text-zinc-400" : "bg-zinc-100 hover:bg-zinc-200 text-zinc-600"
+              }`}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
           {/* Saldo Card */}
-          <div className="relative overflow-hidden bg-gradient-to-br from-emerald-500/20 via-zinc-900 to-zinc-900 border border-emerald-500/20 rounded-[2rem] p-6 shadow-xl shadow-emerald-500/5">
+          <div className={`relative overflow-hidden border rounded-[2rem] p-6 shadow-xl transition-all duration-200 ${
+            isDarkMode 
+              ? "bg-gradient-to-br from-emerald-500/20 via-zinc-900 to-zinc-900 border-emerald-500/20 shadow-emerald-500/5" 
+              : "bg-gradient-to-br from-emerald-500/10 via-white to-white border-emerald-500/20 shadow-zinc-200/50"
+          }`}>
             <div className="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl"></div>
-            <p className="text-xs font-semibold text-emerald-400 tracking-wider uppercase">
-              Total Saldo
+            <p className={`text-xs font-semibold tracking-wider uppercase ${
+              isDarkMode ? "text-emerald-400" : "text-emerald-600"
+            }`}>
+              Saldo Bulan Ini
             </p>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white mt-1.5 break-all">
+            <h1 className="text-3xl font-extrabold tracking-tight mt-1.5 break-all">
               {formatRupiah(balance)}
             </h1>
 
             {/* Income & Expense summary */}
-            <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-zinc-800/80">
+            <div className={`grid grid-cols-2 gap-4 mt-6 pt-6 border-t ${
+              isDarkMode ? "border-zinc-800/80" : "border-zinc-100"
+            }`}>
               <div className="flex items-start gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 mt-0.5">
                   <ArrowDownRight className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-semibold text-zinc-500 tracking-wider uppercase">
+                  <p className={`text-[10px] font-semibold tracking-wider uppercase ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>
                     Pemasukan
                   </p>
-                  <p className="text-sm font-bold text-emerald-400 mt-0.5">
+                  <p className={`text-sm font-bold mt-0.5 ${isDarkMode ? "text-emerald-400" : "text-emerald-600"}`}>
                     {formatRupiah(totalIncome)}
                   </p>
                 </div>
@@ -345,7 +496,7 @@ export default function Home() {
                   <ArrowUpRight className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-semibold text-zinc-500 tracking-wider uppercase">
+                  <p className={`text-[10px] font-semibold tracking-wider uppercase ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>
                     Pengeluaran
                   </p>
                   <p className="text-sm font-bold text-rose-400 mt-0.5">
@@ -356,29 +507,56 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Donut Chart (LIVING, PLAYING, SAVING, WORKING) */}
-          <DonutChart data={chartData} title="Pembagian Kategori Pengeluaran" />
+          {/* Donut Chart */}
+          <DonutChart 
+            data={chartData} 
+            title="Pembagian Kategori Pengeluaran" 
+            isDarkMode={isDarkMode} 
+            activeCategory={selectedCategory}
+            onCategoryClick={(category) => {
+              setSelectedCategory(category);
+              setCurrentPage(1);
+            }}
+          />
 
           {/* Daftar Riwayat Transaksi */}
           <div className="space-y-3.5">
             <div className="flex justify-between items-center px-1">
-              <h3 className="text-sm font-bold text-white tracking-wide">
-                Riwayat Transaksi
+              <h3 className="text-sm font-bold tracking-wide flex items-center gap-2">
+                <span>Riwayat Transaksi</span>
+                {selectedCategory && (
+                  <span 
+                    onClick={() => {
+                      setSelectedCategory(null);
+                      setCurrentPage(1);
+                    }}
+                    className={`text-[9px] font-bold px-2 py-0.5 rounded-full cursor-pointer flex items-center gap-1 border transition-all ${
+                      selectedCategory === "LIVING" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20" :
+                      selectedCategory === "PLAYING" ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/20" :
+                      selectedCategory === "SAVING" ? "bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20" :
+                      "bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20"
+                    }`}
+                  >
+                    <span>{selectedCategory}</span>
+                    <span className="text-[10px] font-light">&times;</span>
+                  </span>
+                )}
               </h3>
-              <span className="text-[10px] text-zinc-500 font-medium">
-                {transactions.length} Transaksi
+              <span className={`text-[10px] font-medium ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>
+                {displayTransactions.length} Transaksi
               </span>
             </div>
 
-            {transactions.length === 0 ? (
-              <div className="bg-zinc-900/40 border border-zinc-800 border-dashed rounded-3xl p-10 text-center text-zinc-600 text-xs">
+            {displayTransactions.length === 0 ? (
+              <div className={`border border-dashed rounded-3xl p-10 text-center text-xs ${
+                isDarkMode ? "bg-zinc-900/40 border-zinc-800 text-zinc-600" : "bg-white border-zinc-200 text-zinc-400 shadow-sm"
+              }`}>
                 <Database className="w-8 h-8 mx-auto mb-2.5 stroke-[1.5]" />
-                <p>Belum ada catatan transaksi</p>
+                <p>Belum ada catatan transaksi {selectedCategory ? `untuk kategori ${selectedCategory} ` : ""}di bulan ini</p>
               </div>
             ) : (
               <div className="space-y-2.5">
-                {transactions.map((tx) => {
-                  // Dapatkan konfigurasi subkategori secara dinamis
+                {paginatedTransactions.map((tx) => {
                   const subConfig = subCategoryConfig[tx.category] || {
                     label: tx.category,
                     parent: "LIVING",
@@ -391,16 +569,20 @@ export default function Home() {
                   return (
                     <div
                       key={tx.id}
-                      className="group flex items-center justify-between p-4 bg-zinc-900 border border-zinc-800/80 rounded-2.5xl hover:border-zinc-800 transition-all duration-200"
+                      className={`group flex items-center justify-between p-4 border rounded-2.5xl transition-all duration-200 ${
+                        isDarkMode 
+                          ? "bg-zinc-900 border-zinc-800/80 hover:border-zinc-800" 
+                          : "bg-white border-zinc-200 hover:border-zinc-300 shadow-sm"
+                      }`}
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
-                        {/* Icon Subkategori dengan warna tema Kategori Utama */}
+                        {/* Icon Subkategori */}
                         <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${parentConfig.bg} border border-current/10 flex-shrink-0`}>
                           <IconComp className={`w-5 h-5 ${parentConfig.color} stroke-[1.8]`} />
                         </div>
                         {/* Detail Transaksi */}
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white truncate">
+                          <p className="text-sm font-semibold truncate">
                             {tx.note || subConfig.label}
                           </p>
                           <div className="flex items-center gap-2 mt-1">
@@ -408,8 +590,8 @@ export default function Home() {
                               {parentConfig.label}
                             </span>
                             <div className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-zinc-600" />
-                              <span className="text-[10px] text-zinc-500 font-medium">
+                              <Calendar className={`w-3 h-3 ${isDarkMode ? "text-zinc-600" : "text-zinc-400"}`} />
+                              <span className={`text-[10px] font-medium ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>
                                 {formatDate(tx.date)}
                               </span>
                             </div>
@@ -421,7 +603,7 @@ export default function Home() {
                       <div className="flex items-center gap-3 pl-3">
                         <span
                           className={`text-sm font-bold tracking-tight text-right ${
-                            isExpense ? "text-rose-400" : "text-emerald-400"
+                            isExpense ? "text-rose-400" : "text-emerald-500"
                           }`}
                         >
                           {isExpense ? "-" : "+"}
@@ -429,7 +611,11 @@ export default function Home() {
                         </span>
                         <button
                           onClick={() => handleDeleteTransaction(tx.id)}
-                          className="p-2 rounded-xl bg-zinc-950/40 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 active:scale-90 transition-all"
+                          className={`p-2 rounded-xl transition-all ${
+                            isDarkMode 
+                              ? "bg-zinc-950/40 text-zinc-500 hover:text-red-400 hover:bg-red-500/10" 
+                              : "bg-zinc-100 text-zinc-400 hover:text-red-500 hover:bg-red-500/5 shadow-sm"
+                          }`}
                           title="Hapus Transaksi"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -438,6 +624,41 @@ export default function Home() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Paginasi Controls */}
+            {displayTransactions.length > ITEMS_PER_PAGE && (
+              <div className="flex items-center justify-between pt-3 px-1">
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((prev) => prev - 1)}
+                  className={`px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                    currentPage === 1
+                      ? "opacity-35 cursor-not-allowed border-transparent text-zinc-500"
+                      : isDarkMode
+                      ? "bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                      : "bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 shadow-sm"
+                  }`}
+                >
+                  Sebelumnya
+                </button>
+                <span className={`text-[11px] font-medium ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>
+                  Halaman {currentPage} dari {totalPages}
+                </span>
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((prev) => prev + 1)}
+                  className={`px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                    currentPage === totalPages
+                      ? "opacity-35 cursor-not-allowed border-transparent text-zinc-500"
+                      : isDarkMode
+                      ? "bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                      : "bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 shadow-sm"
+                  }`}
+                >
+                  Berikutnya
+                </button>
               </div>
             )}
           </div>
@@ -453,7 +674,9 @@ export default function Home() {
         </button>
 
         {/* Footer info link GitHub */}
-        <footer className="text-center text-[10px] text-zinc-600 py-6 border-t border-zinc-900/60 mt-auto">
+        <footer className={`text-center text-[10px] py-6 border-t mt-auto transition-colors duration-200 ${
+          isDarkMode ? "text-zinc-600 border-zinc-900/60" : "text-zinc-400 border-zinc-200/60"
+        }`}>
           <p className="flex items-center justify-center gap-1">
             <GithubIcon className="w-3.5 h-3.5" />
             <span>shiverzichida/catatkeuanganzag</span>

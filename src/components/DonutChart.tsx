@@ -11,9 +11,18 @@ interface ChartItem {
 interface DonutChartProps {
   data: ChartItem[];
   title: string;
+  isDarkMode?: boolean;
+  onCategoryClick?: (categoryName: string | null) => void;
+  activeCategory?: string | null;
 }
 
-export default function DonutChart({ data, title }: DonutChartProps) {
+export default function DonutChart({ 
+  data, 
+  title, 
+  isDarkMode = true,
+  onCategoryClick,
+  activeCategory = null
+}: DonutChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   
   const total = data.reduce((acc, item) => acc + item.value, 0);
@@ -38,10 +47,25 @@ export default function DonutChart({ data, title }: DonutChartProps) {
 
   // State values for center label
   const isHovered = hoveredIndex !== null;
-  const currentLabel = isHovered ? activeItems[hoveredIndex!].name : "Total";
-  const currentValue = isHovered ? activeItems[hoveredIndex!].value : total;
-  const currentPct = isHovered ? ((activeItems[hoveredIndex!].value / total) * 100).toFixed(1) + "%" : "";
-  const currentColor = isHovered ? activeItems[hoveredIndex!].color : "#a1a1aa";
+  const currentLabel = isHovered 
+    ? activeItems[hoveredIndex!].name 
+    : (activeCategory ? activeCategory : "Total");
+  const currentValue = isHovered 
+    ? activeItems[hoveredIndex!].value 
+    : (activeCategory ? (activeItems.find(item => item.name === activeCategory)?.value || 0) : total);
+  const currentPct = isHovered 
+    ? ((activeItems[hoveredIndex!].value / total) * 100).toFixed(1) + "%" 
+    : (activeCategory ? ((activeItems.find(item => item.name === activeCategory)?.value || 0) / total * 100).toFixed(1) + "%" : "");
+
+  const colorMap: Record<string, string> = {
+    LIVING: "#10b981", // emerald-500
+    PLAYING: "#6366f1", // indigo-500
+    SAVING: "#f59e0b", // amber-500
+    WORKING: "#f43f5e", // rose-500
+  };
+  const currentColor = isHovered 
+    ? activeItems[hoveredIndex!].color 
+    : (activeCategory ? (colorMap[activeCategory] || "#a1a1aa") : "#a1a1aa");
 
   return (
     <div className="relative overflow-hidden bg-zinc-900/60 backdrop-blur-xl border border-zinc-800/80 rounded-3xl p-6 shadow-2xl transition-all duration-300 hover:border-zinc-700/80">
@@ -112,7 +136,15 @@ export default function DonutChart({ data, title }: DonutChartProps) {
                 accumulatedPercentage += percentage;
 
                 const isSegmentHovered = hoveredIndex === index;
+                const isSegmentSelected = activeCategory === item.name;
                 const strokeVal = `url(#grad-${item.name})`;
+
+                let segmentOpacity = 1;
+                if (isHovered) {
+                  segmentOpacity = isSegmentHovered ? 1 : 0.35;
+                } else if (activeCategory) {
+                  segmentOpacity = isSegmentSelected ? 1 : 0.35;
+                }
 
                 return (
                   <circle
@@ -122,17 +154,18 @@ export default function DonutChart({ data, title }: DonutChartProps) {
                     r={radius}
                     fill="transparent"
                     stroke={strokeVal}
-                    strokeWidth={isSegmentHovered ? strokeWidth + 4 : strokeWidth}
+                    strokeWidth={(isSegmentHovered || isSegmentSelected) ? strokeWidth + 4 : strokeWidth}
                     strokeDasharray={circumference}
                     strokeDashoffset={strokeDashoffset}
                     onMouseEnter={() => setHoveredIndex(index)}
                     onMouseLeave={() => setHoveredIndex(null)}
+                    onClick={() => onCategoryClick?.(isSegmentSelected ? null : item.name)}
                     className="cursor-pointer transition-all duration-300 origin-center"
                     style={{
                       transform: `rotate(${(rotationOffset / circumference) * 360}deg)`,
                       transformOrigin: "80px 80px",
-                      opacity: isHovered && !isSegmentHovered ? 0.35 : 1,
-                      filter: isSegmentHovered ? "url(#glow)" : "none",
+                      opacity: segmentOpacity,
+                      filter: (isSegmentHovered || isSegmentSelected) ? "url(#glow)" : "none",
                     }}
                     strokeLinecap="round"
                   />
@@ -154,7 +187,7 @@ export default function DonutChart({ data, title }: DonutChartProps) {
                   compactDisplay: "short"
                 }).format(currentValue)}
               </span>
-              {isHovered ? (
+              {(isHovered || activeCategory) ? (
                 <span className="text-[11px] font-bold text-zinc-400 mt-0.5 transition-all duration-300">
                   {currentPct}
                 </span>
@@ -171,18 +204,28 @@ export default function DonutChart({ data, title }: DonutChartProps) {
             {activeItems.map((item, index) => {
               const pct = ((item.value / total) * 100).toFixed(1);
               const isItemHovered = hoveredIndex === index;
+              const isItemSelected = activeCategory === item.name;
+
+              let legendOpacityClass = "opacity-100";
+              if (isHovered) {
+                legendOpacityClass = isItemHovered ? "opacity-100" : "opacity-40";
+              } else if (activeCategory) {
+                legendOpacityClass = isItemSelected ? "opacity-100" : "opacity-40";
+              }
+
               return (
                 <div 
                   key={index} 
                   onMouseEnter={() => setHoveredIndex(index)}
                   onMouseLeave={() => setHoveredIndex(null)}
+                  onClick={() => onCategoryClick?.(isItemSelected ? null : item.name)}
                   className={`flex flex-col gap-1 p-2.5 rounded-2xl transition-all duration-300 cursor-pointer ${
-                    isItemHovered 
-                      ? "bg-zinc-800/40 scale-[1.02] shadow-md shadow-black/10" 
-                      : isHovered 
-                        ? "opacity-40 hover:opacity-100" 
+                    isItemSelected 
+                      ? "bg-zinc-800/50 ring-1 ring-zinc-700/50 scale-[1.02] shadow-md shadow-black/10"
+                      : isItemHovered
+                        ? "bg-zinc-800/40 scale-[1.02] shadow-md shadow-black/10" 
                         : "hover:bg-zinc-850/30"
-                  }`}
+                  } ${legendOpacityClass}`}
                 >
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2.5">
@@ -190,7 +233,7 @@ export default function DonutChart({ data, title }: DonutChartProps) {
                         className="w-3 h-3 rounded-full shadow-inner transition-transform duration-300" 
                         style={{ 
                           background: `linear-gradient(135deg, ${item.color}, ${item.color}cc)`,
-                          transform: isItemHovered ? "scale(1.2)" : "scale(1)"
+                          transform: (isItemHovered || isItemSelected) ? "scale(1.2)" : "scale(1)"
                         }} 
                       />
                       <span className="text-zinc-300 font-semibold tracking-wide">{item.name}</span>
@@ -208,7 +251,7 @@ export default function DonutChart({ data, title }: DonutChartProps) {
                       style={{ 
                         width: `${pct}%`, 
                         background: `linear-gradient(90deg, ${item.color}dd, ${item.color})`,
-                        opacity: isHovered && !isItemHovered ? 0.4 : 1
+                        opacity: (isHovered && !isItemHovered) || (activeCategory && !isItemSelected && !isHovered) ? 0.4 : 1
                       }} 
                     />
                   </div>
@@ -221,4 +264,3 @@ export default function DonutChart({ data, title }: DonutChartProps) {
     </div>
   );
 }
-
