@@ -110,6 +110,8 @@ export default function Home() {
   const [selectedMonth, setSelectedMonth] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Mount check & Load theme/login
   useEffect(() => {
@@ -255,23 +257,29 @@ export default function Home() {
     }
   };
 
-  const handleDeleteTransaction = async (id: string) => {
-    const confirmDelete = window.confirm("Apakah Anda yakin ingin menghapus transaksi ini?");
-    if (!confirmDelete) return;
+  const handleDeleteTransaction = (id: string) => {
+    setTransactionToDelete(id);
+  };
 
-    if (isSupabaseConfigured) {
-      try {
-        const { error } = await supabase.from("transactions").delete().eq("id", id);
+  const confirmDeleteTransaction = async () => {
+    if (!transactionToDelete) return;
+    setIsDeleting(true);
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from("transactions").delete().eq("id", transactionToDelete);
         if (error) throw error;
         await fetchTransactions();
-      } catch (err) {
-        console.error("Gagal menghapus dari Supabase:", err);
-        alert("Gagal menghapus transaksi dari database");
+      } else {
+        const updated = transactions.filter((tx) => tx.id !== transactionToDelete);
+        setTransactions(updated);
+        localStorage.setItem("transactions_data", JSON.stringify(updated));
       }
-    } else {
-      const updated = transactions.filter((tx) => tx.id !== id);
-      setTransactions(updated);
-      localStorage.setItem("transactions_data", JSON.stringify(updated));
+      setTransactionToDelete(null);
+    } catch (err) {
+      console.error("Gagal menghapus dari Supabase:", err);
+      alert("Gagal menghapus transaksi dari database");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -689,6 +697,100 @@ export default function Home() {
           onClose={() => setIsModalOpen(false)}
           onSubmit={handleAddTransaction}
         />
+
+        {/* Custom Delete Confirmation Modal */}
+        {transactionToDelete && (() => {
+          const tx = transactions.find(t => t.id === transactionToDelete);
+          if (!tx) return null;
+          const subConfig = subCategoryConfig[tx.category] || {
+            label: tx.category,
+            parent: "LIVING",
+            icon: AlertTriangle
+          };
+          const parentConfig = parentCategoryConfig[subConfig.parent] || parentCategoryConfig["LIVING"];
+          const IconComp = subConfig.icon;
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in">
+              <div className="absolute inset-0" onClick={() => setTransactionToDelete(null)}></div>
+              
+              {/* Modal Box */}
+              <div className={`relative w-full max-w-sm rounded-[2rem] p-6 border shadow-2xl z-10 transform scale-100 transition-all duration-300 ${
+                isDarkMode 
+                  ? "bg-zinc-900 border-zinc-800 text-white shadow-black/80" 
+                  : "bg-white border-zinc-200 text-zinc-900 shadow-zinc-300/40"
+              }`}>
+                {/* Header Icon */}
+                <div className="flex justify-center mb-4">
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-rose-500/10 border border-rose-500/20 text-rose-500 animate-pulse">
+                    <Trash2 className="w-7 h-7 stroke-[2]" />
+                  </div>
+                </div>
+
+                {/* Content */}
+                <h3 className="text-center text-base font-bold tracking-tight mb-2">Hapus Transaksi?</h3>
+                <p className={`text-center text-xs leading-relaxed mb-5 ${
+                  isDarkMode ? "text-zinc-400" : "text-zinc-500"
+                }`}>
+                  Apakah Anda yakin ingin menghapus catatan transaksi ini? Tindakan ini tidak dapat dibatalkan.
+                </p>
+
+                {/* Transaction Card details inside modal */}
+                <div className={`flex items-center justify-between p-3.5 border rounded-2xl mb-6 ${
+                  isDarkMode ? "bg-zinc-950/60 border-zinc-800" : "bg-zinc-50 border-zinc-200"
+                }`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${parentConfig.bg} border border-current/10 flex-shrink-0`}>
+                      <IconComp className={`w-4.5 h-4.5 ${parentConfig.color}`} />
+                    </div>
+                    <div className="min-w-0 text-left">
+                      <p className="text-xs font-bold truncate">
+                        {tx.note || subConfig.label}
+                      </p>
+                      <p className={`text-[9px] font-medium mt-0.5 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>
+                        {formatDate(tx.date)}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-xs font-extrabold flex-shrink-0 ${
+                    tx.type === "expense" ? "text-rose-400" : "text-emerald-500"
+                  }`}>
+                    {tx.type === "expense" ? "-" : "+"}
+                    {formatRupiah(tx.amount).replace("Rp", "")}
+                  </span>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setTransactionToDelete(null)}
+                    disabled={isDeleting}
+                    className={`py-3 rounded-xl text-xs font-bold transition-all ${
+                      isDarkMode 
+                        ? "bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white" 
+                        : "bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 text-zinc-600 hover:text-zinc-850"
+                    }`}
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmDeleteTransaction}
+                    disabled={isDeleting}
+                    className="py-3 rounded-xl text-xs font-bold bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white shadow-lg shadow-rose-500/10 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {isDeleting ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      "Ya, Hapus"
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
